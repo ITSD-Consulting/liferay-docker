@@ -1,11 +1,11 @@
-FROM --platform=${TARGETPLATFORM} liferay/jdk11:latest AS liferay-jdk11
+FROM --platform=${TARGETPLATFORM} liferay/jdk11-jdk8:latest AS liferay-jdk11-jdk8
 
 RUN apt-get update && \
 	apt-get install --no-install-recommends --yes ffmpeg fonts-dejavu ghostscript imagemagick gifsicle libtcnative-1 && \
 	apt-get upgrade --yes && \
 	apt-get clean
 
-FROM liferay-jdk11
+FROM liferay-jdk11-jdk8
 
 ARG LABEL_BUILD_DATE
 ARG LABEL_LIFERAY_PATCHING_TOOL_VERSION
