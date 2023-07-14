@@ -3,18 +3,20 @@
 source ./_common.sh
 
 function check_usage {
-	if [ ! -n "${LIFERAY_DOCKER_IMAGE_ID}" ]
+	if [ ! -n "${LIFERAY_DOCKER_IMAGE_ID}" ] || [ ! -n "${LIFERAY_DOCKER_LOGS_DIR}" ]
 	then
 		echo "Usage: ${0}"
 		echo ""
 		echo "The script reads the following environment variables:"
 		echo ""
 		echo "    LIFERAY_DOCKER_IMAGE_ID: ID of Docker image"
+		echo "    LIFERAY_DOCKER_LOGS_DIR: Path to the logs directory"
+		echo "    LIFERAY_DOCKER_NETWORK_NAME: Docker network name of the CI node container"
 		echo "    LIFERAY_DOCKER_TEST_HOTFIX_URL: URL of the test hotfix to install"
 		echo "    LIFERAY_DOCKER_TEST_INSTALLED_PATCHES: Comma separated list of installed patches (e.g. dxp-4-7210,hotfix-1072-7210)"
 		echo "    LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL: URL of the test Patching Tool to install"
 		echo ""
-		echo "Example: LIFERAY_DOCKER_IMAGE_ID=liferay/dxp:7.2.10.1-sp1-202001171544 ${0}"
+		echo "Example: LIFERAY_DOCKER_IMAGE_ID=liferay/dxp:7.2.10.1-sp1-202001171544 LIFERAY_DOCKER_LOGS_DIR=logs-202306270130 ${0}"
 
 		exit 1
 	fi
@@ -26,6 +28,15 @@ function clean_up_test_directory {
 	if [ "${TEST_RESULT}" -eq 0 ]
 	then
 		rm -fr "${TEST_DIR}"
+	fi
+}
+
+function generate_thread_dump {
+	if [ "${TEST_RESULT}" -gt 0 ]
+	then
+		docker exec -it "${CONTAINER_ID}" /usr/local/bin/generate_thread_dump.sh
+
+		docker cp "${CONTAINER_ID}":/opt/liferay/data/sre/thread_dumps "${PWD}/${LIFERAY_DOCKER_LOGS_DIR}"
 	fi
 }
 
@@ -65,6 +76,8 @@ function main {
 	test_docker_image_scripts_1
 	test_docker_image_scripts_2
 
+	generate_thread_dump
+
 	stop_container
 
 	clean_up_test_directory
@@ -83,11 +96,9 @@ function prepare_mount {
 
 	if [ -n "${LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL}" ]
 	then
-		local patcing_tool_file_name=${LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL##*/}
+		local patching_tool_file_name=${LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL##*/}
 
-		download "downloads/patching-tool/${patcing_tool_file_name}" "${LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL}"
-	else
-		local patcing_tool_file_name=$(find downloads/patching-tool/ -maxdepth 1 -name '*.zip' -printf "%T+\t%f\n" | sort | tail -n 1 | awk '{print $2}')
+		download "downloads/patching-tool/${patching_tool_file_name}" "${LIFERAY_DOCKER_TEST_PATCHING_TOOL_URL}"
 	fi
 
 	if [ -n "${LIFERAY_DOCKER_TEST_HOTFIX_URL}" ]
@@ -115,11 +126,36 @@ function prepare_mount {
 function start_container {
 	echo "Starting container from image ${LIFERAY_DOCKER_IMAGE_ID}."
 
-	CONTAINER_ID=$(docker run -d -p 8080 -v "${PWD}/${TEST_DIR}/mnt/liferay":/mnt/liferay "${LIFERAY_DOCKER_IMAGE_ID}")
+	# TODO Temporary fix until IT rebuilds the CI servers
 
-	CONTAINER_PORT_HTTP=$(docker port "${CONTAINER_ID}" 8080/tcp)
+	if [ ! -n "${LIFERAY_DOCKER_NETWORK_NAME}" ]
+	then
+		LIFERAY_DOCKER_NETWORK_NAME="${DOCKER_NETWORK_NAME}"
+	fi
 
-	CONTAINER_PORT_HTTP=${CONTAINER_PORT_HTTP##*:}
+	CONTAINER_HOSTNAME="localhost"
+
+	local network_parameters
+	local test_dir="${PWD}/${TEST_DIR}"
+
+	if [ -n "${LIFERAY_DOCKER_NETWORK_NAME}" ]
+	then
+		CONTAINER_HOSTNAME=portal-container
+		CONTAINER_HTTP_PORT=8080
+
+		network_parameters="--hostname=${CONTAINER_HOSTNAME} --name=${CONTAINER_HOSTNAME} --network=${LIFERAY_DOCKER_NETWORK_NAME}"
+
+		test_dir="/data/${LIFERAY_DOCKER_NETWORK_NAME}/liferay/liferay-docker/${TEST_DIR}"
+	fi
+
+	CONTAINER_ID=$(docker run -d -p 8080 -v "${test_dir}/mnt:/mnt:rw" ${network_parameters} "${LIFERAY_DOCKER_IMAGE_ID}")
+
+	if [ ! -n "${LIFERAY_DOCKER_NETWORK_NAME}" ]
+	then
+		CONTAINER_HTTP_PORT=$(docker port "${CONTAINER_ID}" 8080/tcp)
+
+		CONTAINER_HTTP_PORT=${CONTAINER_HTTP_PORT##*:}
+	fi
 
 	TEST_RESULT=0
 }
@@ -132,7 +168,7 @@ function stop_container {
 }
 
 function test_docker_image_files {
-	test_page "http://localhost:${CONTAINER_PORT_HTTP}/test_docker_image_files.jsp" "TEST"
+	test_page "http://${CONTAINER_HOSTNAME}:${CONTAINER_HTTP_PORT}/test_docker_image_files.jsp" "TEST"
 }
 
 function test_docker_image_fix_pack_installed {
@@ -159,7 +195,7 @@ function test_docker_image_fix_pack_installed {
 function test_docker_image_hotfix_installed {
 	if [ -n "${LIFERAY_DOCKER_TEST_HOTFIX_URL}" ]
 	then
-		test_page "http://localhost:${CONTAINER_PORT_HTTP}/" "Hotfix installation on the Docker image was successful."
+		test_page "http://${CONTAINER_HOSTNAME}:${CONTAINER_HTTP_PORT}/" "Hotfix installation on the Docker image was successful."
 	fi
 }
 
@@ -180,11 +216,11 @@ function test_docker_image_patching_tool_updated {
 }
 
 function test_docker_image_scripts_1 {
-	test_page "http://localhost:${CONTAINER_PORT_HTTP}/test_docker_image_scripts_1.jsp" "TEST1"
+	test_page "http://${CONTAINER_HOSTNAME}:${CONTAINER_HTTP_PORT}/test_docker_image_scripts_1.jsp" "TEST1"
 }
 
 function test_docker_image_scripts_2 {
-	test_page "http://localhost:${CONTAINER_PORT_HTTP}/test_docker_image_scripts_2.jsp" "TEST2"
+	test_page "http://${CONTAINER_HOSTNAME}:${CONTAINER_HTTP_PORT}/test_docker_image_scripts_2.jsp" "TEST2"
 }
 
 function test_health_status {
@@ -220,7 +256,7 @@ function test_health_status {
 function test_page {
 	local content
 
-	content=$(curl --fail -s --show-error -L "${1}")
+	content=$(curl --fail --max-time 60 -s --show-error -L "${1}")
 
 	local exit_code=$?
 

@@ -19,16 +19,18 @@ function main {
 			update-java-alternatives -s zulu-"${zulu_version}"-"${architecture}"
 		fi
 
+		local zulu_jdks=$(ls /usr/lib/jvm/ | grep "zulu-.*-.*" | awk -F- '{print $1$2}' | paste -s -d "," | sed "s/,/, /g")
+
 		if [ -e "/usr/lib/jvm/${JAVA_VERSION}" ]
 		then
 			JAVA_HOME=/usr/lib/jvm/${JAVA_VERSION}
 			PATH=/usr/lib/jvm/${JAVA_VERSION}/bin/:${PATH}
 
-			echo "[LIFERAY] Using ${JAVA_VERSION} JDK. You can use another JDK by setting the \"JAVA_VERSION\" environment varible."
-			echo ""
+			echo "[LIFERAY] Using ${JAVA_VERSION} JDK. You can use another JDK by setting the \"JAVA_VERSION\" environment variable."
+			echo "[LIFERAY] Available JDKs: ${zulu_jdks}."
 		else
 			echo "[LIFERAY] \"${JAVA_VERSION}\" JDK is not available in this Docker image."
-			echo ""
+			echo "[LIFERAY] Available JDKs: ${zulu_jdks}."
 
 			exit 1
 		fi

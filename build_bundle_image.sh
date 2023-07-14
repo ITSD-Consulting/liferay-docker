@@ -80,18 +80,18 @@ function build_docker_image {
 	do
 		if [[ ${LIFERAY_DOCKER_RELEASE_FILE_URL%} == */snapshot-* ]]
 		then
-			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:${release_branch}-${release_version_single}-${release_hash}")
-			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:${release_branch}-$(date "${CURRENT_DATE}" "+%Y%m%d")")
-			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:${release_branch}")
+			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:${release_branch}-${release_version_single}-${release_hash}")
+			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:${release_branch}-$(date "${CURRENT_DATE}" "+%Y%m%d")")
+			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:${release_branch}")
 		else
-			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:${release_version_single}-d$(./release_notes.sh get-version)-${TIMESTAMP}")
-			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:${release_version_single}")
+			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:${release_version_single}-d$(./release_notes.sh get-version)-${TIMESTAMP}")
+			DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:${release_version_single}")
 		fi
 	done
 
 	if [[ "${LIFERAY_DOCKER_LATEST}" = "true" ]]
 	then
-		DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/${DOCKER_IMAGE_NAME}:latest")
+		DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/${DOCKER_IMAGE_NAME}:latest")
 	fi
 
 	if [ -e "${TEMP_DIR}/liferay/.githash" ]
@@ -109,6 +109,7 @@ function build_docker_image {
 		--build-arg LABEL_LIFERAY_TOMCAT_VERSION=$(get_tomcat_version "${TEMP_DIR}/liferay") \
 		--build-arg LABEL_LIFERAY_VCS_REF="${LIFERAY_VCS_REF}" \
 		--build-arg LABEL_NAME="${DOCKER_LABEL_NAME}" \
+		--build-arg LABEL_RELEASE_VERSION="${LIFERAY_DOCKER_RELEASE_VERSION}" \
 		--build-arg LABEL_VCS_REF=$(git rev-parse HEAD) \
 		--build-arg LABEL_VCS_URL="https://github.com/liferay/liferay-docker" \
 		--build-arg LABEL_VERSION="${LABEL_VERSION}" \
@@ -135,11 +136,11 @@ function check_release {
 function check_usage {
 	if [ ! -n "${LIFERAY_DOCKER_RELEASE_FILE_URL}" ]
 	then
-		echo "Usage: ${0} <push>"
+		echo "Usage: ${0} --push"
 		echo ""
 		echo "The script reads the following environment variables:"
 		echo ""
-		echo "    LIFERAY_DOCKER_DEVELOPER_MODE (optional): If set to \"true\" all local images will be deleted before building a one."
+		echo "    LIFERAY_DOCKER_DEVELOPER_MODE (optional): If set to \"true\", all local images will be deleted before building a one"
 		echo "    LIFERAY_DOCKER_FIX_PACK_URL (optional): URL to a fix pack"
 		echo "    LIFERAY_DOCKER_HUB_TOKEN (optional): Docker Hub token to log in automatically"
 		echo "    LIFERAY_DOCKER_HUB_USERNAME (optional): Docker Hub username to log in automatically"
@@ -255,6 +256,7 @@ function push_docker_image {
 			--build-arg LABEL_LIFERAY_TOMCAT_VERSION=$(get_tomcat_version "${TEMP_DIR}/liferay") \
 			--build-arg LABEL_LIFERAY_VCS_REF="${LIFERAY_VCS_REF}" \
 			--build-arg LABEL_NAME="${DOCKER_LABEL_NAME}" \
+			--build-arg LABEL_RELEASE_VERSION="${LIFERAY_DOCKER_RELEASE_VERSION}" \
 			--build-arg LABEL_VCS_REF=$(git rev-parse HEAD) \
 			--build-arg LABEL_VCS_URL="https://github.com/liferay/liferay-docker" \
 			--build-arg LABEL_VERSION="${LABEL_VERSION}" \
@@ -274,6 +276,11 @@ function set_parent_image {
 }
 
 function update_patching_tool {
+	if [ -e "${TEMP_DIR}/liferay/tomcat" ]
+	then
+		sed -i "s@tomcat-[0-9]*.[0-9]*.[0-9]*/@tomcat/@g" "${TEMP_DIR}/liferay/patching-tool/default.properties"
+	fi
+
 	if [ -e "${TEMP_DIR}/liferay/patching-tool" ]
 	then
 		local patching_tool_minor_version=$("${TEMP_DIR}"/liferay/patching-tool/patching-tool.sh info | grep "patching-tool version")
@@ -321,7 +328,7 @@ function update_patching_tool {
 		echo "Updating Patching Tool to version ${latest_patching_tool_version}."
 		echo ""
 
-		download "downloads/patching-tool/patching-tool-${latest_patching_tool_version}.zip" "files.liferay.com/private/ee/fix-packs/patching-tool/patching-tool-${latest_patching_tool_version}.zip"
+		download "downloads/patching-tool/patching-tool-${latest_patching_tool_version}.zip" "releases-cdn.liferay.com/tools/patching-tool/patching-tool-${latest_patching_tool_version}.zip"
 
 		unzip -d "${TEMP_DIR}/liferay" -q "downloads/patching-tool/patching-tool-${latest_patching_tool_version}.zip"
 

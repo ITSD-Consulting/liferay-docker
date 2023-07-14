@@ -1,5 +1,7 @@
 services:
     job-runner:
+        environment:
+            "EVERY_THREE_MINUTES": "*/3 * * * *"
         image: liferay/job-runner:latest
         volumes:
         - ./files:/mnt/liferay

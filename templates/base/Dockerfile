@@ -1,7 +1,9 @@
-FROM --platform=${TARGETPLATFORM} ubuntu:focal AS ubuntu-focal
+FROM --platform=${TARGETPLATFORM} ubuntu:jammy AS ubuntu-jammy
+
+COPY resources/etc/created-date /etc/created-date
 
 RUN apt-get update && \
-	apt-get install --no-install-recommends --yes bash ca-certificates curl less libnss3 telnet tini tree unzip && \
+	DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install --no-install-recommends --yes bash ca-certificates curl jq less libnss3 telnet tini tree unzip && \
 	apt-get upgrade --yes && \
 	apt-get clean
 
@@ -9,7 +11,7 @@ RUN adduser --disabled-password --home /home/liferay liferay --uid 1000 && \
 	addgroup liferay liferay && \
 	usermod -g 1000 liferay
 
-FROM ubuntu-focal
+FROM ubuntu-jammy
 
 ARG LABEL_BUILD_DATE
 ARG LABEL_NAME
@@ -17,6 +19,8 @@ ARG LABEL_VCS_REF
 ARG LABEL_VCS_URL
 ARG LABEL_VERSION
 ARG TARGETPLATFORM
+
+ENV LANG="C.UTF-8"
 
 LABEL org.label-schema.build-date="${LABEL_BUILD_DATE}"
 LABEL org.label-schema.name="${LABEL_NAME}"

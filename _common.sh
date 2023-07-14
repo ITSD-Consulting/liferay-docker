@@ -17,14 +17,14 @@ function check_docker_buildx {
 }
 
 function check_utils {
-
-	#
-	# https://stackoverflow.com/a/677212
-	#
-
 	for util in "${@}"
 	do
-		command -v "${util}" >/dev/null 2>&1 || { echo >&2 "The utility ${util} is not installed."; exit 1; }
+		if (! command -v "${util}" &>/dev/null)
+		then
+			echo "The utility ${util} is not installed."
+
+			exit 1
+		fi
 	done
 }
 
@@ -92,6 +92,7 @@ function download {
 
 	if [[ "${file_url}" != http://mirrors.*.liferay.com* ]] &&
 	   [[ "${file_url}" != http://release-1* ]] &&
+	   [[ "${file_url}" != http://releases-cdn.liferay.com* ]] &&
 	   [[ "${file_url}" != https://release.liferay.com* ]]
 	then
 		if [ ! -n "${LIFERAY_DOCKER_MIRROR}" ]
@@ -132,17 +133,26 @@ function get_docker_image_tags_args {
 }
 
 function get_tomcat_version {
-	for temp_file_name in "${1}"/tomcat-*
-	do
-		if [ -e  "${temp_file_name}" ]
-		then
-			local tomcat_folder=${temp_file_name##*/}
-			local liferay_tomcat_version=${tomcat_folder#*-}
-		fi
-		break
-	done
+	local liferay_tomcat_version
 
-	if [ -z ${liferay_tomcat_version+x} ]
+	if [ -e "${1}"/tomcat ]
+	then
+		liferay_tomcat_version=$(grep -Eo "Apache Tomcat Version [0-9]+\.[0-9]+\.[0-9]+" "${1}/tomcat/RELEASE-NOTES" | sed -r "s/Apache Tomcat Version //")
+	else
+		for tomcat_dir_path in "${1}"/tomcat-*
+		do
+			if [ -e "${tomcat_dir_path}" ]
+			then
+				local tomcat_dir=${tomcat_dir_path##*/}
+
+				liferay_tomcat_version=${tomcat_dir#*-}
+			fi
+
+			break
+		done
+	fi
+
+	if [ -z "${liferay_tomcat_version}" ]
 	then
 		echo "Unable to determine Tomcat version."
 
@@ -175,6 +185,18 @@ function make_temp_directory {
 	mkdir -p "${TEMP_DIR}"
 
 	cp -r "${1}"/* "${TEMP_DIR}"
+
+	#
+	# templates/_common/resources/etc/created-date
+	#
+
+	local current_date=$(date)
+
+	current_date=$(date "${current_date}" "+%D")
+
+	echo "${current_date}" > templates/_common/resources/etc/created-date
+
+	cp -r templates/_common/* "${TEMP_DIR}"
 }
 
 function pid_8080 {
@@ -186,21 +208,27 @@ function pid_8080 {
 function prepare_tomcat {
 	local liferay_tomcat_version=$(get_tomcat_version "${TEMP_DIR}/liferay")
 
-	mv "${TEMP_DIR}/liferay/tomcat-${liferay_tomcat_version}" "${TEMP_DIR}/liferay/tomcat"
+	if [ ! -e "${TEMP_DIR}/liferay/tomcat" ]
+	then
+		mv "${TEMP_DIR}/liferay/tomcat-${liferay_tomcat_version}" "${TEMP_DIR}/liferay/tomcat"
 
-	ln -s tomcat "${TEMP_DIR}/liferay/tomcat-${liferay_tomcat_version}"
+		ln -s tomcat "${TEMP_DIR}/liferay/tomcat-${liferay_tomcat_version}"
+	fi
 
 	configure_tomcat
 
-	warm_up_tomcat
+	if [[ ! " ${@} " =~ " --no-warm-up " ]]
+	then
+		warm_up_tomcat
+	fi
 
 	rm -fr "${TEMP_DIR}"/liferay/logs/*
 	rm -fr "${TEMP_DIR}"/liferay/tomcat/logs/*
 }
 
 function remove_temp_dockerfile_target_platform {
-	sed -i 's/${TARGETARCH}'/$(get_current_arch)/ "${TEMP_DIR}"/Dockerfile
-	sed -i 's/--platform=${TARGETPLATFORM} //g' "${TEMP_DIR}"/Dockerfile
+	sed -i'.bak' 's/${TARGETARCH}'/$(get_current_arch)/ "${TEMP_DIR}"/Dockerfile
+	sed -i'' 's/--platform=${TARGETPLATFORM} //g' "${TEMP_DIR}"/Dockerfile
 }
 
 function start_tomcat {
@@ -235,9 +263,15 @@ function start_tomcat {
 
 	"./${TEMP_DIR}/liferay/tomcat/bin/catalina.sh" stop
 
-	sleep 30
+	for i in {0..30..1}
+	do
+		if kill -0 "${pid}" 2>/dev/null
+		then
+			sleep 1
+		fi
+	done
 
-	kill -9 "${pid}" 2>/dev/null
+	kill -0 "${pid}" 2>/dev/null && kill -9 "${pid}" 2>/dev/null
 
 	rm -fr "${TEMP_DIR}/liferay/data/osgi/state"
 	rm -fr "${TEMP_DIR}/liferay/osgi/state"
@@ -255,13 +289,16 @@ function stat {
 function test_docker_image {
 	export LIFERAY_DOCKER_IMAGE_ID="${DOCKER_IMAGE_TAGS[0]}"
 
-	./test_image.sh
-
-	if [ $? -gt 0 ]
+	if [[ ! " ${@} " =~ " --no-test-image " ]]
 	then
-		echo "Testing failed, exiting."
+		./test_image.sh
 
-		exit 2
+		if [ $? -gt 0 ]
+		then
+			echo "Testing failed, exiting."
+
+			exit 2
+		fi
 	fi
 }
 

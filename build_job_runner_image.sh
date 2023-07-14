@@ -6,8 +6,8 @@ function build_docker_image {
 	local image_version=$(./release_notes.sh get-version)
 
 	DOCKER_IMAGE_TAGS=()
-	DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/job-runner:${image_version}-${TIMESTAMP}")
-	DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}liferay/job-runner")
+	DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/job-runner:${image_version}-${TIMESTAMP}")
+	DOCKER_IMAGE_TAGS+=("${LIFERAY_DOCKER_REPOSITORY}/job-runner")
 
 	if [ "${1}" == "push" ]
 	then
@@ -18,7 +18,7 @@ function build_docker_image {
 			--build-arg LABEL_NAME="Liferay Job Runner" \
 			--build-arg LABEL_VCS_REF=$(git rev-parse HEAD) \
 			--build-arg LABEL_VCS_URL="https://github.com/liferay/liferay-docker" \
-			--build-arg LABEL_VERSION="${base_image_version}" \
+			--build-arg LABEL_VERSION="${image_version}" \
 			--builder "liferay-buildkit" \
 			--platform "${LIFERAY_DOCKER_IMAGE_PLATFORMS}" \
 			--push \
@@ -32,13 +32,15 @@ function build_docker_image {
 			--build-arg LABEL_NAME="Liferay Job Runner" \
 			--build-arg LABEL_VCS_REF=$(git rev-parse HEAD) \
 			--build-arg LABEL_VCS_URL="https://github.com/liferay/liferay-docker" \
-			--build-arg LABEL_VERSION="${base_image_version}" \
+			--build-arg LABEL_VERSION="${image_version}" \
 			$(get_docker_image_tags_args "${DOCKER_IMAGE_TAGS[@]}") \
 			"${TEMP_DIR}" || exit 1
 	fi
 }
 
 function main {
+	delete_local_images "${LIFERAY_DOCKER_REPOSITORY}/job-runner"
+
 	make_temp_directory templates/job-runner
 
 	log_in_to_docker_hub

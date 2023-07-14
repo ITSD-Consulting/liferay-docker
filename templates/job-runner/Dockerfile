@@ -1,9 +1,10 @@
-FROM --platform=${TARGETPLATFORM} liferay/jdk11:latest AS liferay-jdk11
+FROM --platform=${TARGETPLATFORM} liferay/jdk11-jdk8:latest AS liferay-jdk11-jdk8
 
-RUN apt-get install --no-install-recommends --yes cron && \
+RUN apt-get update && \
+	DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install --no-install-recommends --yes cron gettext && \
 	apt-get clean
 
-FROM liferay-jdk11
+FROM liferay-jdk11-jdk8
 
 ARG LABEL_BUILD_DATE
 ARG LABEL_NAME
@@ -12,9 +13,12 @@ ARG LABEL_VCS_URL
 ARG LABEL_VERSION
 ARG TARGETPLATFORM
 
+COPY resources/etc/created-date /etc/created-date
 COPY resources/usr/local/bin/* /usr/local/bin/
 
 ENTRYPOINT ["tini", "-v", "--", "/usr/local/bin/liferay_job_runner_entrypoint.sh"]
+
+ENV LANG="C.UTF-8"
 
 LABEL org.label-schema.build-date="${LABEL_BUILD_DATE}"
 LABEL org.label-schema.name="${LABEL_NAME}"

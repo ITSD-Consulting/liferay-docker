@@ -4,14 +4,14 @@ function init {
 	. /usr/local/bin/set_java_version.sh
 
 	mkdir -p /opt/liferay/job-queue
-
-	cron
 }
 
 function main {
 	init
 
 	register_crontab
+
+	cron
 
 	run_jobs
 }
@@ -27,12 +27,12 @@ function register_crontab {
 	(
 		crontab -l 2>/dev/null
 
-		cat /mnt/liferay/job-crontab
+		cat /mnt/liferay/job-crontab | envsubst
 	) | crontab -
 
 	echo "Registered crontab: "
 
-	cat /mnt/liferay/job-crontab
+	crontab -l
 
 	echo ""
 }
